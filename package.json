@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "build": "prisma generate",
+    "build": "prisma generate && prisma db push --accept-data-loss",
     "postinstall": "prisma generate"
   },
   "keywords": [],
