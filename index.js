@@ -1,6 +1,19 @@
 require('dotenv').config();
 const express = require('express');
 const dns = require('dns');
+// Global monkeypatch to strictly force IPv4 resolution across the entire process
+const originalLookup = dns.lookup;
+dns.lookup = function (hostname, options, callback) {
+    if (typeof options === 'function') {
+        callback = options;
+        options = { family: 4 };
+    } else if (typeof options === 'object') {
+        options.family = 4;
+    } else {
+        options = 4;
+    }
+    return originalLookup.call(dns, hostname, options, callback);
+};
 dns.setDefaultResultOrder('ipv4first');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -17,25 +30,17 @@ dns.setServers(['8.8.8.8', '8.8.4.4']); // Use Google DNS to bypass local networ
 
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true,
+    port: 587,
+    secure: false, // Use STARTTLS
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
     },
     tls: {
-        rejectUnauthorized: false,
-        servername: 'smtp.gmail.com'
+        rejectUnauthorized: false
     },
-    // Aggressively force IPv4
-    family: 4,
-    lookup: (hostname, options, callback) => {
-        dns.lookup(hostname, { family: 4, all: false }, (err, address, family) => {
-            if (err) return callback(err);
-            console.log(`Resolved ${hostname} to ${address} (IPv${family})`);
-            callback(null, address, 4);
-        });
-    },
+    localAddress: '0.0.0.0', // Force local IPv4 bind
+    family: 4, // Force IPv4
     connectionTimeout: 15000,
     greetingTimeout: 15000,
     socketTimeout: 30000
