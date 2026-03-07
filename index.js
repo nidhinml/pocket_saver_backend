@@ -14,9 +14,10 @@ const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
 
 const transporter = nodemailer.createTransport({
+    service: 'gmail',
     host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // Use STARTTLS
+    port: 465,
+    secure: true,
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
@@ -35,6 +36,15 @@ console.log('SMTP Config:', {
     port: transporter.options.port,
     secure: transporter.options.secure,
     family: transporter.options.family
+});
+
+// Verify connection on startup
+transporter.verify((error, success) => {
+    if (error) {
+        console.error('SMTP Connection Error:', error);
+    } else {
+        console.log('SMTP Server is ready to take our messages');
+    }
 });
 
 app.use(cors());
