@@ -27,6 +27,14 @@ model User {
   recurringTransactions RecurringTransaction[]
 }
 
+model OtpVerification {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  otp       String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
 model Transaction {
   id        String   @id @default(uuid())
   userId    String

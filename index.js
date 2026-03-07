@@ -36,9 +36,56 @@ const authenticateToken = (req, res, next) => {
 };
 
 // 0. Auth Routes
+app.post('/api/register/send-otp', async (req, res) => {
+    try {
+        const { email } = req.body;
+        const existing = await prisma.user.findUnique({ where: { email } });
+        if (existing) return res.status(400).json({ error: "Email already in use" });
+
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date();
+        expiresAt.setMinutes(expiresAt.getMinutes() + 15);
+
+        // Upsert OTP record
+        const existingOtp = await prisma.otpVerification.findUnique({ where: { email } });
+        if (existingOtp) {
+            await prisma.otpVerification.update({ where: { email }, data: { otp, expiresAt } });
+        } else {
+            await prisma.otpVerification.create({ data: { email, otp, expiresAt } });
+        }
+
+        if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: email,
+                subject: 'PocketSaver Registration OTP',
+                text: `Your registration OTP is ${otp}. It expires in 15 minutes.`
+            });
+            res.json({ message: "OTP sent to your email." });
+        } else {
+            console.log(`[DEV MODE] Registration OTP for ${email} is ${otp}`);
+            res.json({ message: "OTP generated (Check server console, email not configured in .env)." });
+        }
+    } catch (error) {
+        console.error("Registration OTP Error:", error);
+        res.status(500).json({ error: "Failed to send OTP" });
+    }
+});
+
 app.post('/api/register', async (req, res) => {
     try {
-        const { name, email, password } = req.body;
+        const { name, email, password, otp } = req.body;
+
+        if (!otp) return res.status(400).json({ error: "OTP is required" });
+
+        const otpRecord = await prisma.otpVerification.findUnique({ where: { email } });
+        if (!otpRecord || otpRecord.otp !== otp) {
+            return res.status(400).json({ error: "Invalid OTP" });
+        }
+        if (otpRecord.expiresAt < new Date()) {
+            return res.status(400).json({ error: "OTP has expired" });
+        }
+
         const existing = await prisma.user.findUnique({ where: { email } });
         if (existing) return res.status(400).json({ error: "Email already in use" });
 
@@ -46,6 +93,8 @@ app.post('/api/register', async (req, res) => {
         const user = await prisma.user.create({
             data: { name, email, password: hashedPassword }
         });
+
+        await prisma.otpVerification.delete({ where: { email } });
 
         const token = jwt.sign({ id: user.id }, JWT_SECRET, { expiresIn: '7d' });
         res.status(201).json({ token, user: { id: user.id, name: user.name, email: user.email } });
