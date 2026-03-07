@@ -13,6 +13,8 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
 
+dns.setServers(['8.8.8.8', '8.8.4.4']); // Use Google DNS to bypass local network resolution issues
+
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
     port: 465,
@@ -25,12 +27,18 @@ const transporter = nodemailer.createTransport({
         rejectUnauthorized: false,
         servername: 'smtp.gmail.com'
     },
+    // Aggressively force IPv4
+    family: 4,
     lookup: (hostname, options, callback) => {
-        dns.lookup(hostname, { family: 4 }, callback);
+        dns.lookup(hostname, { family: 4, all: false }, (err, address, family) => {
+            if (err) return callback(err);
+            console.log(`Resolved ${hostname} to ${address} (IPv${family})`);
+            callback(null, address, 4);
+        });
     },
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 20000
+    connectionTimeout: 15000,
+    greetingTimeout: 15000,
+    socketTimeout: 30000
 });
 
 console.log('SMTP Config:', {
