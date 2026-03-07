@@ -1,19 +1,6 @@
 require('dotenv').config();
 const express = require('express');
 const dns = require('dns');
-// Global monkeypatch to strictly force IPv4 resolution across the entire process
-const originalLookup = dns.lookup;
-dns.lookup = function (hostname, options, callback) {
-    if (typeof options === 'function') {
-        callback = options;
-        options = { family: 4 };
-    } else if (typeof options === 'object') {
-        options.family = 4;
-    } else {
-        options = 4;
-    }
-    return originalLookup.call(dns, hostname, options, callback);
-};
 dns.setDefaultResultOrder('ipv4first');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
@@ -26,15 +13,8 @@ const app = express();
 const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
 
-dns.setServers(['8.8.8.8', '8.8.4.4']); // Use Google DNS to bypass local network resolution issues
-
-// Log resolution on startup for debugging
-dns.lookup('v4.smtp.gmail.com', { family: 4 }, (err, address) => {
-    console.log(`Startup DNS: v4.smtp.gmail.com resolved to ${address || 'ERROR'}`);
-});
-
 const transporter = nodemailer.createTransport({
-    host: 'v4.smtp.gmail.com',
+    host: 'smtp.gmail.com',
     port: 465,
     secure: true, // Use STARTTLS
     auth: {
