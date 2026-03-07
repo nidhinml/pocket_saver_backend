@@ -1,5 +1,7 @@
 require('dotenv').config();
 const express = require('express');
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
