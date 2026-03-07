@@ -39,7 +39,6 @@ const transporter = nodemailer.createTransport({
     tls: {
         rejectUnauthorized: false
     },
-    localAddress: '0.0.0.0', // Force local IPv4 bind
     family: 4, // Force IPv4
     connectionTimeout: 15000,
     greetingTimeout: 15000,
