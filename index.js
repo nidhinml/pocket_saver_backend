@@ -28,10 +28,15 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
 
 dns.setServers(['8.8.8.8', '8.8.4.4']); // Use Google DNS to bypass local network resolution issues
 
+// Log resolution on startup for debugging
+dns.lookup('v4.smtp.gmail.com', { family: 4 }, (err, address) => {
+    console.log(`Startup DNS: v4.smtp.gmail.com resolved to ${address || 'ERROR'}`);
+});
+
 const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // Use STARTTLS
+    host: 'v4.smtp.gmail.com',
+    port: 465,
+    secure: true, // Use STARTTLS
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
