@@ -30,6 +30,13 @@ const transporter = nodemailer.createTransport({
     socketTimeout: 20000
 });
 
+console.log('SMTP Config:', {
+    host: transporter.options.host,
+    port: transporter.options.port,
+    secure: transporter.options.secure,
+    family: transporter.options.family
+});
+
 app.use(cors());
 app.use(express.json());
 
