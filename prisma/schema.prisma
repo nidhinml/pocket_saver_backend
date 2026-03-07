@@ -17,6 +17,8 @@ model User {
   totalCoins           Int                    @default(0)
   streak               Int                    @default(0)
   lastActive           DateTime?
+  resetOtp             String?
+  resetOtpExpiry       DateTime?
   transactions         Transaction[]
   goals                Goal[]
   challenges           Challenge[]

@@ -3,11 +3,20 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
+const nodemailer = require('nodemailer');
 
 const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
+
+const transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS
+    }
+});
 
 app.use(cors());
 app.use(express.json());
@@ -61,6 +70,79 @@ app.post('/api/login', async (req, res) => {
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Failed to login" });
+    }
+});
+
+app.post('/api/forgot-password/send-otp', async (req, res) => {
+    try {
+        const { email } = req.body;
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) return res.status(404).json({ error: "User not found with this email" });
+
+        // Generate 6 digit OTP
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
+
+        // Save to user with 15 min expiry
+        const expiry = new Date();
+        expiry.setMinutes(expiry.getMinutes() + 15);
+
+        await prisma.user.update({
+            where: { email },
+            data: { resetOtp: otp, resetOtpExpiry: expiry }
+        });
+
+        // Try sending email, gracefully fallback if not configured
+        if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+            await transporter.sendMail({
+                from: process.env.EMAIL_USER,
+                to: email,
+                subject: 'PocketSaver Password Reset OTP',
+                text: `Your password reset OTP is ${otp}. It expires in 15 minutes.`
+            });
+            res.json({ message: "OTP sent to your email." });
+        } else {
+            console.log(`[DEV MODE] OTP for ${email} is ${otp}`);
+            res.json({ message: "OTP generated (Check server console, email not configured in .env)." });
+        }
+    } catch (error) {
+        console.error("OTP Error:", error);
+        res.status(500).json({ error: "Failed to send OTP" });
+    }
+});
+
+app.post('/api/reset-password', async (req, res) => {
+    try {
+        const { email, otp, newPassword } = req.body;
+
+        const user = await prisma.user.findUnique({ where: { email } });
+        if (!user) return res.status(404).json({ error: "User not found with this email" });
+
+        if (!user.resetOtp || user.resetOtp !== otp) {
+            return res.status(400).json({ error: "Invalid OTP" });
+        }
+
+        if (!user.resetOtpExpiry || user.resetOtpExpiry < new Date()) {
+            return res.status(400).json({ error: "OTP has expired" });
+        }
+
+        if (!newPassword || newPassword.length < 6) {
+            return res.status(400).json({ error: "Password must be at least 6 characters" });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 10);
+        await prisma.user.update({
+            where: { email },
+            data: {
+                password: hashedPassword,
+                resetOtp: null,
+                resetOtpExpiry: null
+            }
+        });
+
+        res.json({ message: "Password reset successfully. You can now login with your new password." });
+    } catch (error) {
+        console.error("Reset Password Error:", error);
+        res.status(500).json({ error: "Failed to reset password" });
     }
 });
 
