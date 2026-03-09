@@ -6,46 +6,21 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
-const nodemailer = require('nodemailer');
+const { Resend } = require('resend');
 
 const prisma = new PrismaClient();
 const app = express();
 const PORT = process.env.PORT || 5001;
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
 
-const transporter = nodemailer.createTransport({
-    host: 'smtp.gmail.com',
-    port: 587,
-    secure: false, // Use STARTTLS
-    requireTLS: true,
-    auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASS
-    },
-    tls: {
-        rejectUnauthorized: false
-    },
-    family: 4, // Force IPv4
-    connectionTimeout: 20000,
-    greetingTimeout: 20000,
-    socketTimeout: 30000
-});
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-console.log('SMTP Config:', {
-    host: transporter.options.host,
-    port: transporter.options.port,
-    secure: transporter.options.secure,
-    family: transporter.options.family
-});
-
-// Verify connection on startup
-transporter.verify((error, success) => {
-    if (error) {
-        console.error('SMTP Connection Error:', error);
-    } else {
-        console.log('SMTP Server is ready to take our messages');
-    }
-});
+// Basic check for API key
+if (!process.env.RESEND_API_KEY) {
+    console.log('WARNING: RESEND_API_KEY is not set. Email delivery will not work.');
+} else {
+    console.log('Resend Email API initialized');
+}
 
 app.use(cors());
 app.use(express.json());
@@ -83,9 +58,9 @@ app.post('/api/register/send-otp', async (req, res) => {
             await prisma.otpVerification.create({ data: { email, otp, expiresAt } });
         }
 
-        if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
+        if (process.env.RESEND_API_KEY) {
+            await resend.emails.send({
+                from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
                 to: email,
                 subject: 'PocketSaver Registration OTP',
                 text: `Your registration OTP is ${otp}. It expires in 15 minutes.`
@@ -93,7 +68,7 @@ app.post('/api/register/send-otp', async (req, res) => {
             res.json({ message: "OTP sent to your email." });
         } else {
             console.log(`[DEV MODE] Registration OTP for ${email} is ${otp}`);
-            res.json({ message: "OTP generated (Check server console, email not configured in .env)." });
+            res.json({ message: "OTP generated (Check server console, RESEND_API_KEY not configured)." });
         }
     } catch (error) {
         console.error("Registration OTP Error:", error);
@@ -170,9 +145,9 @@ app.post('/api/forgot-password/send-otp', async (req, res) => {
         });
 
         // Try sending email, gracefully fallback if not configured
-        if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
-            await transporter.sendMail({
-                from: process.env.EMAIL_USER,
+        if (process.env.RESEND_API_KEY) {
+            await resend.emails.send({
+                from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
                 to: email,
                 subject: 'PocketSaver Password Reset OTP',
                 text: `Your password reset OTP is ${otp}. It expires in 15 minutes.`
@@ -180,7 +155,7 @@ app.post('/api/forgot-password/send-otp', async (req, res) => {
             res.json({ message: "OTP sent to your email." });
         } else {
             console.log(`[DEV MODE] OTP for ${email} is ${otp}`);
-            res.json({ message: "OTP generated (Check server console, email not configured in .env)." });
+            res.json({ message: "OTP generated (Check server console, RESEND_API_KEY not configured)." });
         }
     } catch (error) {
         console.error("OTP Error:", error);
