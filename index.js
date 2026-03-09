@@ -6,7 +6,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
-const SibApiV3Sdk = require('sib-api-v3-sdk');
+const axios = require('axios');
 
 const prisma = new PrismaClient();
 const app = express();
@@ -18,18 +18,30 @@ prisma.$connect()
     .then(() => console.log('Prisma connected to database'))
     .catch((e) => console.error('Prisma connection error:', e));
 
-const defaultClient = SibApiV3Sdk.ApiClient.instance;
-const apiKey = defaultClient.authentications['api-key'];
-apiKey.apiKey = process.env.BREVO_API_KEY;
-
-const transactionalEmailsApi = new SibApiV3Sdk.TransactionalEmailsApi();
-
-// Basic check for API key
-if (!process.env.BREVO_API_KEY) {
-    console.log('WARNING: BREVO_API_KEY is not set. Email delivery will not work.');
+// Basic check for Google Script URL
+if (!process.env.GOOGLE_SCRIPT_URL) {
+    console.log('WARNING: GOOGLE_SCRIPT_URL is not set. Email delivery will not work.');
 } else {
-    console.log('Brevo Email API initialized');
+    console.log('Google Script Email Proxy ready');
 }
+
+// Utility function to send email via Google Script Proxy
+const sendEmailViaProxy = async (to, subject, text) => {
+    if (!process.env.GOOGLE_SCRIPT_URL) {
+        throw new Error("GOOGLE_SCRIPT_URL is not configured.");
+    }
+    try {
+        const response = await axios.post(process.env.GOOGLE_SCRIPT_URL, {
+            to,
+            subject,
+            text
+        });
+        return response.data;
+    } catch (error) {
+        console.error("Email Proxy Error:", error.message);
+        throw error;
+    }
+};
 
 app.use(cors());
 app.use(express.json());
@@ -67,24 +79,18 @@ app.post('/api/register/send-otp', async (req, res) => {
             await prisma.otpVerification.create({ data: { email, otp, expiresAt } });
         }
 
-        if (process.env.BREVO_API_KEY) {
-            const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-            sendSmtpEmail.subject = "PocketSaver Registration OTP";
-            sendSmtpEmail.textContent = `Your registration OTP is ${otp}. It expires in 15 minutes.`;
-            sendSmtpEmail.sender = { "name": "PocketSaver", "email": process.env.EMAIL_FROM || "onboarding@brevo.com" };
-            sendSmtpEmail.to = [{ "email": email }];
-
+        if (process.env.GOOGLE_SCRIPT_URL) {
             try {
-                const data = await transactionalEmailsApi.sendTransacEmail(sendSmtpEmail);
-                console.log("Brevo Email Sent (Register):", data);
+                await sendEmailViaProxy(email, 'PocketSaver Registration OTP', `Your registration OTP is ${otp}. It expires in 15 minutes.`);
+                console.log(`Email Sent (Register) to ${email}`);
                 res.json({ message: "OTP sent to your email." });
             } catch (error) {
-                console.error("Brevo API Error (Register):", error);
-                res.status(500).json({ error: "Failed to send OTP via Brevo" });
+                console.error("Email Proxy Error (Register):", error);
+                res.status(500).json({ error: "Failed to send OTP via Google Script" });
             }
         } else {
             console.log(`[DEV MODE] Registration OTP for ${email} is ${otp}`);
-            res.json({ message: "OTP generated (Check server console, BREVO_API_KEY not configured)." });
+            res.json({ message: "OTP generated (Check server console, GOOGLE_SCRIPT_URL not configured)." });
         }
     } catch (error) {
         console.error("Registration OTP Error:", error);
@@ -161,24 +167,18 @@ app.post('/api/forgot-password/send-otp', async (req, res) => {
         });
 
         // Try sending email, gracefully fallback if not configured
-        if (process.env.BREVO_API_KEY) {
-            const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-            sendSmtpEmail.subject = "PocketSaver Password Reset OTP";
-            sendSmtpEmail.textContent = `Your password reset OTP is ${otp}. It expires in 15 minutes.`;
-            sendSmtpEmail.sender = { "name": "PocketSaver", "email": process.env.EMAIL_FROM || "onboarding@brevo.com" };
-            sendSmtpEmail.to = [{ "email": email }];
-
+        if (process.env.GOOGLE_SCRIPT_URL) {
             try {
-                const data = await transactionalEmailsApi.sendTransacEmail(sendSmtpEmail);
-                console.log("Brevo Email Sent (Forgot Pwd):", data);
+                await sendEmailViaProxy(email, 'PocketSaver Password Reset OTP', `Your password reset OTP is ${otp}. It expires in 15 minutes.`);
+                console.log(`Email Sent (Forgot Pwd) to ${email}`);
                 res.json({ message: "OTP sent to your email." });
             } catch (error) {
-                console.error("Brevo API Error (Forgot Pwd):", error);
-                res.status(500).json({ error: "Failed to send OTP via Brevo" });
+                console.error("Email Proxy Error (Forgot Pwd):", error);
+                res.status(500).json({ error: "Failed to send OTP via Google Script" });
             }
         } else {
             console.log(`[DEV MODE] OTP for ${email} is ${otp}`);
-            res.json({ message: "OTP generated (Check server console, BREVO_API_KEY not configured)." });
+            res.json({ message: "OTP generated (Check server console, GOOGLE_SCRIPT_URL not configured)." });
         }
     } catch (error) {
         console.error("OTP Error:", error);
