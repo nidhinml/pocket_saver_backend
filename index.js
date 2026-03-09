@@ -15,8 +15,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
 
 const transporter = nodemailer.createTransport({
     host: 'smtp.gmail.com',
-    port: 465,
-    secure: true, // Use STARTTLS
+    port: 587,
+    secure: false, // Use STARTTLS
+    requireTLS: true,
     auth: {
         user: process.env.EMAIL_USER,
         pass: process.env.EMAIL_PASS
@@ -25,8 +26,8 @@ const transporter = nodemailer.createTransport({
         rejectUnauthorized: false
     },
     family: 4, // Force IPv4
-    connectionTimeout: 15000,
-    greetingTimeout: 15000,
+    connectionTimeout: 20000,
+    greetingTimeout: 20000,
     socketTimeout: 30000
 });
 
