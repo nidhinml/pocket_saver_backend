@@ -59,12 +59,19 @@ app.post('/api/register/send-otp', async (req, res) => {
         }
 
         if (process.env.RESEND_API_KEY) {
-            await resend.emails.send({
+            const { data, error } = await resend.emails.send({
                 from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
                 to: email,
                 subject: 'PocketSaver Registration OTP',
                 text: `Your registration OTP is ${otp}. It expires in 15 minutes.`
             });
+
+            if (error) {
+                console.error("Resend API Error (Register):", error);
+                return res.status(500).json({ error: "Failed to send OTP via Resend" });
+            }
+
+            console.log("Resend Email Sent (Register):", data);
             res.json({ message: "OTP sent to your email." });
         } else {
             console.log(`[DEV MODE] Registration OTP for ${email} is ${otp}`);
@@ -146,12 +153,19 @@ app.post('/api/forgot-password/send-otp', async (req, res) => {
 
         // Try sending email, gracefully fallback if not configured
         if (process.env.RESEND_API_KEY) {
-            await resend.emails.send({
+            const { data, error } = await resend.emails.send({
                 from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
                 to: email,
                 subject: 'PocketSaver Password Reset OTP',
                 text: `Your password reset OTP is ${otp}. It expires in 15 minutes.`
             });
+
+            if (error) {
+                console.error("Resend API Error (Forgot Pwd):", error);
+                return res.status(500).json({ error: "Failed to send OTP via Resend" });
+            }
+
+            console.log("Resend Email Sent (Forgot Pwd):", data);
             res.json({ message: "OTP sent to your email." });
         } else {
             console.log(`[DEV MODE] OTP for ${email} is ${otp}`);
