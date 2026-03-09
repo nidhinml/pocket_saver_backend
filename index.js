@@ -6,20 +6,29 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
-const { Resend } = require('resend');
+const SibApiV3Sdk = require('sib-api-v3-sdk');
 
 const prisma = new PrismaClient();
 const app = express();
-const PORT = process.env.PORT || 5001;
+const PORT = process.env.PORT || 10000; // Updated to 10000 to match Render's environment better
 const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_pocket_key_123';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Add a simple error handler for Prisma to log more details but keep it running
+prisma.$connect()
+    .then(() => console.log('Prisma connected to database'))
+    .catch((e) => console.error('Prisma connection error:', e));
+
+const defaultClient = SibApiV3Sdk.ApiClient.instance;
+const apiKey = defaultClient.authentications['api-key'];
+apiKey.apiKey = process.env.BREVO_API_KEY;
+
+const transactionalEmailsApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
 // Basic check for API key
-if (!process.env.RESEND_API_KEY) {
-    console.log('WARNING: RESEND_API_KEY is not set. Email delivery will not work.');
+if (!process.env.BREVO_API_KEY) {
+    console.log('WARNING: BREVO_API_KEY is not set. Email delivery will not work.');
 } else {
-    console.log('Resend Email API initialized');
+    console.log('Brevo Email API initialized');
 }
 
 app.use(cors());
@@ -58,24 +67,24 @@ app.post('/api/register/send-otp', async (req, res) => {
             await prisma.otpVerification.create({ data: { email, otp, expiresAt } });
         }
 
-        if (process.env.RESEND_API_KEY) {
-            const { data, error } = await resend.emails.send({
-                from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
-                to: email,
-                subject: 'PocketSaver Registration OTP',
-                text: `Your registration OTP is ${otp}. It expires in 15 minutes.`
-            });
+        if (process.env.BREVO_API_KEY) {
+            const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+            sendSmtpEmail.subject = "PocketSaver Registration OTP";
+            sendSmtpEmail.textContent = `Your registration OTP is ${otp}. It expires in 15 minutes.`;
+            sendSmtpEmail.sender = { "name": "PocketSaver", "email": process.env.EMAIL_FROM || "onboarding@brevo.com" };
+            sendSmtpEmail.to = [{ "email": email }];
 
-            if (error) {
-                console.error("Resend API Error (Register):", error);
-                return res.status(500).json({ error: "Failed to send OTP via Resend" });
+            try {
+                const data = await transactionalEmailsApi.sendTransacEmail(sendSmtpEmail);
+                console.log("Brevo Email Sent (Register):", data);
+                res.json({ message: "OTP sent to your email." });
+            } catch (error) {
+                console.error("Brevo API Error (Register):", error);
+                res.status(500).json({ error: "Failed to send OTP via Brevo" });
             }
-
-            console.log("Resend Email Sent (Register):", data);
-            res.json({ message: "OTP sent to your email." });
         } else {
             console.log(`[DEV MODE] Registration OTP for ${email} is ${otp}`);
-            res.json({ message: "OTP generated (Check server console, RESEND_API_KEY not configured)." });
+            res.json({ message: "OTP generated (Check server console, BREVO_API_KEY not configured)." });
         }
     } catch (error) {
         console.error("Registration OTP Error:", error);
@@ -152,24 +161,24 @@ app.post('/api/forgot-password/send-otp', async (req, res) => {
         });
 
         // Try sending email, gracefully fallback if not configured
-        if (process.env.RESEND_API_KEY) {
-            const { data, error } = await resend.emails.send({
-                from: process.env.EMAIL_FROM || 'onboarding@resend.dev',
-                to: email,
-                subject: 'PocketSaver Password Reset OTP',
-                text: `Your password reset OTP is ${otp}. It expires in 15 minutes.`
-            });
+        if (process.env.BREVO_API_KEY) {
+            const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
+            sendSmtpEmail.subject = "PocketSaver Password Reset OTP";
+            sendSmtpEmail.textContent = `Your password reset OTP is ${otp}. It expires in 15 minutes.`;
+            sendSmtpEmail.sender = { "name": "PocketSaver", "email": process.env.EMAIL_FROM || "onboarding@brevo.com" };
+            sendSmtpEmail.to = [{ "email": email }];
 
-            if (error) {
-                console.error("Resend API Error (Forgot Pwd):", error);
-                return res.status(500).json({ error: "Failed to send OTP via Resend" });
+            try {
+                const data = await transactionalEmailsApi.sendTransacEmail(sendSmtpEmail);
+                console.log("Brevo Email Sent (Forgot Pwd):", data);
+                res.json({ message: "OTP sent to your email." });
+            } catch (error) {
+                console.error("Brevo API Error (Forgot Pwd):", error);
+                res.status(500).json({ error: "Failed to send OTP via Brevo" });
             }
-
-            console.log("Resend Email Sent (Forgot Pwd):", data);
-            res.json({ message: "OTP sent to your email." });
         } else {
             console.log(`[DEV MODE] OTP for ${email} is ${otp}`);
-            res.json({ message: "OTP generated (Check server console, RESEND_API_KEY not configured)." });
+            res.json({ message: "OTP generated (Check server console, BREVO_API_KEY not configured)." });
         }
     } catch (error) {
         console.error("OTP Error:", error);
