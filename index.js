@@ -43,6 +43,63 @@ const sendEmailViaProxy = async (to, subject, text) => {
     }
 };
 
+// Helper to check budget and notify user
+const checkAndNotifyBudget = async (userId, category) => {
+    try {
+        const month = new Date().toISOString().slice(0, 7); // "2026-03"
+        const budget = await prisma.budget.findFirst({
+            where: { userId, category, month }
+        });
+
+        if (!budget || (budget.alert80Sent && budget.alert100Sent)) return;
+
+        const startOfMonth = new Date(`${month}-01`);
+        const transactions = await prisma.transaction.findMany({
+            where: {
+                userId,
+                category,
+                type: 'EXPENSE',
+                date: { gte: startOfMonth }
+            }
+        });
+
+        const totalSpent = transactions.reduce((sum, t) => sum + t.amount, 0);
+        const limit = budget.monthlyLimit;
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+
+        if (!user || !user.email) return;
+
+        // 100% Alert
+        if (totalSpent >= limit && !budget.alert100Sent) {
+            await sendEmailViaProxy(
+                user.email,
+                `🚨 Budget Alert: 100% Reached for ${category}`,
+                `Hello ${user.name || 'User'},\n\nYou have reached 100% of your ₹${limit} budget for the "${category}" category this month (Spent: ₹${totalSpent}).\n\nTake a moment to review your expenses in PocketSaver!`
+            );
+            await prisma.budget.update({
+                where: { id: budget.id },
+                data: { alert100Sent: true, alert80Sent: true }
+            });
+            console.log(`100% Alert sent to ${user.email} for ${category}`);
+        }
+        // 80% Alert
+        else if (totalSpent >= limit * 0.8 && !budget.alert80Sent) {
+            await sendEmailViaProxy(
+                user.email,
+                `⚠️ Budget Warning: 80% Reached for ${category}`,
+                `Hello ${user.name || 'User'},\n\nYou have reached 80% of your ₹${limit} budget for the "${category}" category this month (Spent: ₹${totalSpent}).\n\nStay on track with your saving goals!`
+            );
+            await prisma.budget.update({
+                where: { id: budget.id },
+                data: { alert80Sent: true }
+            });
+            console.log(`80% Alert sent to ${user.email} for ${category}`);
+        }
+    } catch (error) {
+        console.error("Budget Notification Error:", error);
+    }
+};
+
 app.use(cors());
 app.use(express.json());
 
@@ -285,6 +342,11 @@ app.post('/api/transactions', authenticateToken, async (req, res) => {
         });
 
         res.status(201).json(transaction);
+
+        // Check for budget alerts after adding an expense
+        if (type === 'EXPENSE') {
+            checkAndNotifyBudget(userId, category);
+        }
     } catch (error) {
         console.error("Transaction Error:", error);
         res.status(500).json({ error: "Failed to add transaction" });
@@ -478,6 +540,11 @@ app.put('/api/transactions/:id', authenticateToken, async (req, res) => {
         });
 
         res.json(updated);
+
+        // Check for budget alerts after updating
+        if (updated.type === 'EXPENSE') {
+            checkAndNotifyBudget(userId, updated.category);
+        }
     } catch (error) {
         console.error("Update Transaction Error:", error);
         res.status(500).json({ error: "Failed to update transaction" });

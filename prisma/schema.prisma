@@ -82,6 +82,8 @@ model Budget {
   category     String
   monthlyLimit Float
   month        String // "2026-03"
+  alert80Sent  Boolean @default(false)
+  alert100Sent Boolean @default(false)
 }
 
 model RecurringTransaction {
